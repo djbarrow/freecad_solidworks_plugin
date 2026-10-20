@@ -22,7 +22,7 @@ to **barrow_dj@yahoo.com**.
 
 1. In FreeCAD, open **Tools → Addon manager**.
 2. Open the settings (gear icon). Under **Custom repositories**, add
-   `https://github.com/djbarrow/SolidWorksImport` with branch `main`.
+   `https://github.com/djbarrow/freecad_solidworks_plugin` with branch `main`.
 3. Find **SolidWorks Import** in the list, click **Install**, and restart FreeCAD.
 
 ### By hand

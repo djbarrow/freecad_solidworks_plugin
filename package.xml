@@ -7,9 +7,9 @@
   <maintainer email="barrow_dj@yahoo.com">Denis Joseph Barrow</maintainer>
   <author email="barrow_dj@yahoo.com">Denis Joseph Barrow</author>
   <license file="LICENSE">LGPL-2.1-or-later</license>
-  <url type="repository" branch="main">https://github.com/djbarrow/SolidWorksImport</url>
-  <url type="bugtracker">https://github.com/djbarrow/SolidWorksImport/issues</url>
-  <url type="readme">https://github.com/djbarrow/SolidWorksImport/blob/main/README.md</url>
+  <url type="repository" branch="main">https://github.com/djbarrow/freecad_solidworks_plugin</url>
+  <url type="bugtracker">https://github.com/djbarrow/freecad_solidworks_plugin/issues</url>
+  <url type="readme">https://github.com/djbarrow/freecad_solidworks_plugin/blob/main/README.md</url>
   <icon>Resources/icons/SolidWorksImport.svg</icon>
   <freecadmin>0.21.0</freecadmin>
   <tag>import</tag>
