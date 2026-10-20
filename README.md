@@ -13,6 +13,9 @@ solid with its SolidWorks colours. Each assembly component becomes an
 
 ## Support the plugin
 
+A SolidWorks licence costs around **3500 euro a year**. This plugin opens your
+SolidWorks files in free FreeCAD, which makes it excellent value.
+
 If you like the plugin, please support it by paying **10 euro** via
 [**PayPal**](https://www.paypal.com/) to **barrow_dj@yahoo.com**.
 
@@ -82,3 +85,7 @@ Written by Denis Joseph Barrow (barrow_dj@yahoo.com) with the help of
 [Claude Code](https://claude.com/claude-code).
 
 LGPL-2.1-or-later. See [LICENSE](LICENSE).
+
+SolidWorks and Parasolid are trademarks of Dassault Systèmes and Siemens
+respectively. This plugin is an independent project, not affiliated with or
+endorsed by either company.
