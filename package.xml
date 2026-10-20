@@ -2,7 +2,7 @@
 <package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
   <name>SolidWorks Import</name>
   <description>Open and import SolidWorks parts (.SLDPRT, 2011 and later), assemblies (.SLDASM) and Parasolid (.x_t/.x_b) files, with colours and assembly placements. No SolidWorks installation needed.</description>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
   <date>2026-10-20</date>
   <maintainer email="barrow_dj@yahoo.com">Denis Joseph Barrow</maintainer>
   <author email="barrow_dj@yahoo.com">Denis Joseph Barrow</author>

@@ -50,6 +50,14 @@ plugin looks for each part next to the assembly and in folders below it. If a
 part is not found, FreeCAD asks for the folder that contains it. Components whose
 files are still missing are left out, and their names are listed.
 
+## Speed
+
+Each file is converted once and the result is kept in a cache, so opening the
+same file again (or an assembly whose parts were opened before) is about 20
+times faster. The cache is keyed by the file's contents, so a changed file is
+always converted afresh. It lives in FreeCAD's cache folder, under `sw2fc`
+(on Linux `~/.cache/FreeCAD/Cache/sw2fc`), and is safe to delete.
+
 ## Limitations
 
 * SolidWorks files saved before 2011 use an older format that is not supported.

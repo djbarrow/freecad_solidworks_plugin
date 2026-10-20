@@ -717,15 +717,16 @@ class Builder:
         if not wires:
             f = g.toShape()
         else:
-            sf = Part.ShapeFix.Face(g, 1e-6)
-            # OCC 7.8 can crash in FixPeriodicDegenerated (cone apex), so it is
-            # disabled; faces it would have repaired go through _split_face.
-            sf.FixPeriodicDegeneratedMode = 0
-            for w in wires:
-                sf.add(w)
-            sf.perform()
-            f = sf.face()
+            f = self._bounded_face(g, wires)
             n_expected = sum(len(x) for x in loop_edges)
+            if not approx and f.Area < 0 and not self._face_ok(f, n_expected):
+                # Boundary runs the wrong way round this surface (seen on
+                # B-splines whose parameter direction disagrees with the XT
+                # normal). Reversing it is far cheaper than _split_face below,
+                # which would cut out the same piece.
+                f_rev = self._bounded_face(g, [w.reversed() for w in wires])
+                if self._face_ok(f_rev, n_expected):
+                    f = f_rev
             if not approx and not self._face_ok(f, n_expected):
                 # Cut the surface with the boundary. If that leaves a piece with
                 # extra loops (a wrong chunk of surface: stray sheets on shoe
@@ -753,6 +754,17 @@ class Builder:
         if approx:
             self.stats["approx_faces"] += 1
         return f
+
+    @staticmethod
+    def _bounded_face(g, wires):
+        sf = Part.ShapeFix.Face(g, 1e-6)
+        # OCC 7.8 can crash in FixPeriodicDegenerated (cone apex), so it is
+        # disabled; faces it would have repaired go through _split_face.
+        sf.FixPeriodicDegeneratedMode = 0
+        for w in wires:
+            sf.add(w)
+        sf.perform()
+        return sf.face()
 
     @staticmethod
     def _repair_face(f, n_expected):
@@ -1127,9 +1139,11 @@ class Builder:
         out = []
         start = _start_point(eshape)
         c = eshape.Curve
+        box = eshape.BoundBox
+        box.enlarge(1e-3)
         for fe in fshape.Edges:
             m = fe.valueAt(0.5 * (fe.FirstParameter + fe.LastParameter))
-            if eshape.distToShape(Part.Vertex(m))[0] > 1e-4:
+            if not box.isInside(m) or eshape.distToShape(Part.Vertex(m))[0] > 1e-4:
                 continue
             a, b = fe.valueAt(fe.FirstParameter), fe.valueAt(fe.LastParameter)
             if (a - b).Length < 1e-9 and fe.Length < 1e-7:
@@ -1159,12 +1173,19 @@ class Builder:
         """If face repair split a shared edge in one face, give the neighbouring
         face the same pieces, so the two faces share identical edges."""
         users = {}
+        split = set()
         for item in built:
-            for eid in set(self._face_edge_ids(item[0])):
+            eids = set(self._face_edge_ids(item[0]))
+            for eid in eids:
                 users.setdefault(eid, []).append(item)
+            # one built edge per XT edge means no edge of this face was split
+            if len(item[1].Edges) > len(eids):
+                split.add(id(item))
         rebuild = set()
         for eid, items in users.items():
             if len(items) != 2 or eid in self._edge_override:
+                continue
+            if id(items[0]) not in split and id(items[1]) not in split:
                 continue
             eshape = self._edge.get(eid)
             if eshape is None:
@@ -1226,7 +1247,12 @@ class Builder:
             except Exception as exc:
                 self.log.warn("solid creation failed: %s" % exc)
                 open_shells.append(sh)
-        loose = [f for f in sewn.Faces if not any(f.isSame(g) for sh in shells for g in sh.Faces)]
+        in_shell = {}
+        for sh in shells:
+            for g in sh.Faces:
+                in_shell.setdefault(g.hashCode(), []).append(g)
+        loose = [f for f in sewn.Faces
+                 if not any(f.isSame(g) for g in in_shell.get(f.hashCode(), ()))]
         if open_shells or loose:
             self.log.warn("%d open shell(s): result is not a closed solid" % (len(open_shells) + len(loose)))
         if solids and not open_shells and not loose:

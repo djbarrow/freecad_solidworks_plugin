@@ -20,6 +20,7 @@ if _here not in sys.path:
     sys.path.insert(0, _here)
 
 from sw2fc import assembly as _asm          # noqa: E402
+from sw2fc import cache as _cache           # noqa: E402
 from sw2fc.convert import ConversionError, convert, _doc_name   # noqa: E402
 
 PART_EXTS = (".sldprt", ".x_t", ".x_b", ".xmt_txt", ".xmt_bin")
@@ -80,17 +81,29 @@ def _import(filename, doc):
         FreeCADGui.SendMsgToActiveView("ViewFit")
 
 
+CACHE_OPTIONS = {"sew_tolerance": 0.01, "keep_duplicates": False}
+
+
 def _convert(path):
-    results, log = convert(path, verbose=False)
-    for w in log.warnings:
+    """[(label, shape, appearance)] for a part file, from the disk cache when
+    this exact file was converted before."""
+    hit = _cache.load(path, CACHE_OPTIONS)
+    if hit is not None:
+        bodies, warnings, st = hit
+    else:
+        results, log = convert(path, verbose=False, **CACHE_OPTIONS)
+        apps = list(getattr(log, "appearances", []))
+        apps += [None] * (len(results) - len(apps))
+        bodies = [(label, shape, kind, app)
+                  for (label, shape, kind), app in zip(results, apps)]
+        warnings, st = log.warnings, getattr(log, "stats", {})
+        _cache.store(path, CACHE_OPTIONS, bodies, warnings, st)
+    for w in warnings:
         _warn(w)
-    st = getattr(log, "stats", {})
     if st.get("failed_faces"):
         _warn("%s: %d of %d faces could not be rebuilt"
               % (os.path.basename(path), st["failed_faces"], st["faces"]))
-    apps = list(getattr(log, "appearances", []))
-    apps += [None] * (len(results) - len(apps))
-    return [(label, shape, app) for (label, shape, _), app in zip(results, apps)]
+    return [(label, shape, app) for label, shape, _, app in bodies]
 
 
 def _add_bodies(doc, bodies, container=None, visible=True):
