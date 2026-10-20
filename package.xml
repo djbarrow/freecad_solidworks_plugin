@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
+  <name>SolidWorks Import</name>
+  <description>Open and import SolidWorks parts (.SLDPRT, 2011 and later), assemblies (.SLDASM) and Parasolid (.x_t/.x_b) files, with colours and assembly placements. No SolidWorks installation needed.</description>
+  <version>1.0.0</version>
+  <date>2026-10-20</date>
+  <maintainer email="barrow_dj@yahoo.com">Denis Joseph Barrow</maintainer>
+  <author email="barrow_dj@yahoo.com">Denis Joseph Barrow</author>
+  <license file="LICENSE">LGPL-2.1-or-later</license>
+  <url type="repository" branch="main">https://github.com/djbarrow/SolidWorksImport</url>
+  <url type="bugtracker">https://github.com/djbarrow/SolidWorksImport/issues</url>
+  <url type="readme">https://github.com/djbarrow/SolidWorksImport/blob/main/README.md</url>
+  <icon>Resources/icons/SolidWorksImport.svg</icon>
+  <freecadmin>0.21.0</freecadmin>
+  <tag>import</tag>
+  <tag>SolidWorks</tag>
+  <tag>SLDPRT</tag>
+  <tag>SLDASM</tag>
+  <tag>Parasolid</tag>
+  <content>
+    <!-- Not a real workbench: FreeCAD only runs Init.py for content listed as
+         a workbench, and Init.py is what registers the file types. -->
+    <workbench>
+      <name>SolidWorks Import</name>
+      <subdirectory>./</subdirectory>
+      <icon>Resources/icons/SolidWorksImport.svg</icon>
+    </workbench>
+  </content>
+</package>
