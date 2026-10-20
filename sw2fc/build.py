@@ -779,7 +779,7 @@ class Builder:
             f = self._bounded_face(g, wires)
             n_expected = sum(len(x) for x in loop_edges)
             if (not approx and f.Area < 0 and not self._face_ok(f, n_expected)
-                    and self._edges_on_surface(g, wires, 0.1)):
+                    and self._edges_on_face(f, 0.1)):
                 # Boundary runs the wrong way round this surface (seen on
                 # B-splines whose parameter direction disagrees with the XT
                 # normal). Reversing it is far cheaper than _split_face below,
@@ -830,20 +830,16 @@ class Builder:
         return sf.face()
 
     @staticmethod
-    def _edges_on_surface(g, wires, tol):
-        """True if sample points of every boundary edge lie within `tol` mm of `g`."""
+    def _edges_on_face(f, tol):
+        """True if every boundary edge lies within `tol` mm of the face's surface.
+        ShapeFix.Face already projected the edges onto the surface and raised
+        each edge's tolerance to the gap it found, so this costs nothing
+        (sampling the edges with surface.parameter() takes seconds on large
+        B-splines)."""
         try:
-            for w in wires:
-                for e in w.Edges:
-                    t0, t1 = e.FirstParameter, e.LastParameter
-                    for k in range(7):
-                        p = e.valueAt(t0 + (t1 - t0) * k / 6.0)
-                        u, v = g.parameter(p)
-                        if (g.value(u, v) - p).Length > tol:
-                            return False
+            return f.getTolerance(1, Part.Edge) <= tol
         except Exception:
             return False
-        return True
 
     @staticmethod
     def _repair_face(f, n_expected):
