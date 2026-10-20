@@ -13,8 +13,11 @@ solid with its SolidWorks colours. Each assembly component becomes an
 
 ## Support the plugin
 
-If you like the plugin, please support it by paying **10 euro** via **PayPal**
-to **barrow_dj@yahoo.com**.
+If you like the plugin, please support it by paying **10 euro** via
+[**PayPal**](https://www.paypal.com/) to **barrow_dj@yahoo.com**.
+
+On [paypal.com](https://www.paypal.com/), choose **Send**, enter
+`barrow_dj@yahoo.com`, and send 10 EUR.
 
 ## Install
 
