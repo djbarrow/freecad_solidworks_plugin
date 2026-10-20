@@ -197,6 +197,10 @@ class Builder:
 
     def _make_edge(self, c, p0, p1, ring, on_fin):
         ty = c.type
+        if not ring and p0 is not None and p1 is not None and ty in (133, 137):
+            arc = self._blend_cross_arc(c, p0, p1)
+            if arc is not None:
+                return arc
         if ty == 30 and not ring:
             return Part.LineSegment(_v(p0), _v(p1)).toShape()
         if ty == 133:
@@ -265,6 +269,61 @@ class Builder:
                 a, b = b, a
         e = g.toShape(a, b)
         return e.reversed() if sense == "-" else e
+
+    def _blend_cross_arc(self, c, p0, p1):
+        """Edge running straight across a rolling-ball blend: an SP_CURVE at
+        constant u on a BLENDED_EDGE surface, from one support to the other.
+        The blend's cross-section is a circular arc of the blend radius around
+        the ball centre, which lies one radius along a support's normal from
+        the edge's ends. Returns None when the curve is not such an edge (the
+        caller then uses its general method)."""
+        sp = self.node(c["basis_curve"]) if c.type == 133 else c
+        if sp is None or sp.type != 137:
+            return None
+        blend = self.node(sp["surface"])
+        if blend is None or blend.type != 56:
+            return None
+        try:
+            nb, _ = G.nurbs_curve(self.t, self.node(sp["b_curve"]))
+            r = blend["range"]
+            radius = abs(r[0] or r[1]) * MM
+            # u is distance along the spine (metres): near-constant means the
+            # curve runs across the blend, not along it
+            us = [nb.eval(nb.t0 + (nb.t1 - nb.t0) * k / 4.0)[0] for k in range(5)]
+            if max(us) - min(us) > 0.05 * radius / MM:
+                return None
+            a, b = _v(p0), _v(p1)
+            chord = (b - a).Length
+            if radius <= 0 or chord < 1e-7 or chord > 2 * radius * 0.999:
+                return None
+            tol = 0.02 * radius
+            centres = []
+            for si in blend["surface"]:
+                support = self.node(si)
+                if support is None or support.type in (56, 59, 120):
+                    continue
+                g, _ = self.surface(support)
+                for p, other in ((a, b), (b, a)):
+                    u, v = g.parameter(p)
+                    if (g.value(u, v) - p).Length > tol:
+                        continue                  # this end is not on this support
+                    n = g.normal(u, v)
+                    for sgn in (1.0, -1.0):
+                        q = p + n * (sgn * radius)
+                        if abs((other - q).Length - radius) < tol:
+                            centres.append(q)
+            if not centres:
+                return None
+            centre = centres[0]
+            if any((q - centre).Length > tol for q in centres):
+                return None                       # ambiguous: leave it to the fallback
+            mid = (a + b) * 0.5 - centre
+            if mid.Length < 1e-9:
+                return None
+            mid.normalize()
+            return Part.Arc(a, centre + mid * radius, b).toShape()
+        except Exception:
+            return None
 
     def _trimmed_edge(self, c, p0, p1, ring):
         basis = self.node(c["basis_curve"])
@@ -719,11 +778,15 @@ class Builder:
         else:
             f = self._bounded_face(g, wires)
             n_expected = sum(len(x) for x in loop_edges)
-            if not approx and f.Area < 0 and not self._face_ok(f, n_expected):
+            if (not approx and f.Area < 0 and not self._face_ok(f, n_expected)
+                    and self._edges_on_surface(g, wires, 0.1)):
                 # Boundary runs the wrong way round this surface (seen on
                 # B-splines whose parameter direction disagrees with the XT
                 # normal). Reversing it is far cheaper than _split_face below,
-                # which would cut out the same piece.
+                # which would cut out the same piece. Only safe when the
+                # boundary lies on the surface: edges that stray from it
+                # (approximated blend edges, on shoe soles and tyre rims)
+                # sweep out extra surface, and need _split_face.
                 f_rev = self._bounded_face(g, [w.reversed() for w in wires])
                 if self._face_ok(f_rev, n_expected):
                     f = f_rev
@@ -765,6 +828,22 @@ class Builder:
             sf.add(w)
         sf.perform()
         return sf.face()
+
+    @staticmethod
+    def _edges_on_surface(g, wires, tol):
+        """True if sample points of every boundary edge lie within `tol` mm of `g`."""
+        try:
+            for w in wires:
+                for e in w.Edges:
+                    t0, t1 = e.FirstParameter, e.LastParameter
+                    for k in range(7):
+                        p = e.valueAt(t0 + (t1 - t0) * k / 6.0)
+                        u, v = g.parameter(p)
+                        if (g.value(u, v) - p).Length > tol:
+                            return False
+        except Exception:
+            return False
+        return True
 
     @staticmethod
     def _repair_face(f, n_expected):
