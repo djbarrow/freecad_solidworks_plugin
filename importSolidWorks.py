@@ -26,6 +26,12 @@ from sw2fc.convert import ConversionError, convert, _doc_name   # noqa: E402
 PART_EXTS = (".sldprt", ".x_t", ".x_b", ".xmt_txt", ".xmt_bin")
 ASM_EXTS = (".sldasm",)
 
+# While open_folder() runs: problems are collected here for one summary
+# instead of a dialog per file, and missing parts are looked for in the
+# chosen folder instead of asking.
+_batch_errors = None
+_search_dirs = []
+
 
 def _msg(text):
     FreeCAD.Console.PrintMessage("SolidWorks import: %s\n" % text)
@@ -37,7 +43,9 @@ def _warn(text):
 
 def _error(text):
     FreeCAD.Console.PrintError("SolidWorks import: %s\n" % text)
-    if FreeCAD.GuiUp:
+    if _batch_errors is not None:
+        _batch_errors.append(text)
+    elif FreeCAD.GuiUp:
         try:
             from PySide import QtGui
             QtGui.QMessageBox.warning(None, "SolidWorks import", text)
@@ -50,7 +58,11 @@ def open(filename):
     base = os.path.splitext(os.path.basename(filename))[0]
     doc = FreeCAD.newDocument(_doc_name(base))
     doc.Label = base
-    _import(filename, doc)
+    try:
+        _import(filename, doc)
+    except Exception:
+        FreeCAD.closeDocument(doc.Name)   # do not leave an empty tab behind
+        raise
     return doc
 
 
@@ -161,18 +173,18 @@ def _import_assembly(filename, doc):
         ", %d skipped (file not found)" % missing if missing else ""))
     lost = sorted({_asm._basename(p) for p, found in paths.items() if not found})
     if lost:
-        _error("These part files were not found, so %d component(s) were left out:\n\n%s\n\n"
+        _error("%s: these part files were not found, so %d component(s) were left out:\n\n%s\n\n"
                "Put them next to the assembly (or in a folder below it) and import again."
-               % (missing, "\n".join("  " + n for n in lost)))
+               % (os.path.basename(filename), missing, "\n".join("  " + n for n in lost)))
 
 
 def _resolve_components(leaves, asm_path):
     """{stored path: local path or None}. In the GUI, ask for a folder when
     some part files are not next to the assembly."""
     stored = sorted({c.path for c, _ in leaves})
-    found = {p: _asm.resolve_file(p, asm_path) for p in stored}
+    found = {p: _asm.resolve_file(p, asm_path, _search_dirs) for p in stored}
     lost = [p for p in stored if not found[p]]
-    if lost and FreeCAD.GuiUp:
+    if lost and FreeCAD.GuiUp and _batch_errors is None:
         try:
             from PySide import QtGui
             names = "\n".join("  " + _asm._basename(p) for p in lost)
@@ -194,6 +206,123 @@ def _resolve_components(leaves, asm_path):
         if not found[p]:
             _warn("part file not found: %s" % p)
     return found
+
+
+# ------------------------------------------------------------ folders
+FOLDER_EXTS = (".sldprt", ".sldasm")
+
+
+def _key(path):
+    return os.path.normcase(os.path.realpath(path))
+
+
+def solidworks_files(folder, recursive=False):
+    """SolidWorks parts and assemblies in `folder`, sorted, without the
+    ~$ lock files SolidWorks leaves while a file is open."""
+    out = []
+    for dirpath, dirnames, names in os.walk(folder):
+        dirnames.sort()
+        for n in sorted(names):
+            if n.startswith("~$") or os.path.splitext(n)[1].lower() not in FOLDER_EXTS:
+                continue
+            out.append(os.path.join(dirpath, n))
+        if not recursive:
+            break
+    return out
+
+
+def has_subfolder_files(folder):
+    top = {_key(p) for p in solidworks_files(folder)}
+    return any(_key(p) not in top for p in solidworks_files(folder, True))
+
+
+def _all_components(comp):
+    for c in comp.children:
+        yield c
+        for g in _all_components(c):
+            yield g
+
+
+def plan_folder(folder, recursive=False):
+    """(assemblies, parts) to open for a folder: every assembly no other
+    assembly in the folder uses, and every part those assemblies do not use
+    (so nothing is opened twice). Also returns how many files were skipped
+    because an assembly already contains them."""
+    files = solidworks_files(folder, recursive)
+    asms = [f for f in files if f.lower().endswith(".sldasm")]
+    parts = [f for f in files if not f.lower().endswith(".sldasm")]
+    used = set()
+    for a in asms:
+        try:
+            root = _asm.read_tree(a)
+        except Exception:
+            continue                      # reported when it is opened
+        for comp in _all_components(root):
+            p = _asm.resolve_file(comp.path, a, [folder])
+            if p:
+                used.add(_key(p))
+    top = [a for a in asms if _key(a) not in used]
+    loose = [p for p in parts if _key(p) not in used]
+    skipped = len(files) - len(top) - len(loose)
+    return top, loose, skipped
+
+
+def open_folder(folder, recursive=False):
+    """Open a folder of SolidWorks files, one document per top-level
+    assembly or unused part. Returns the new documents."""
+    global _batch_errors, _search_dirs
+    top, loose, skipped = plan_folder(folder, recursive)
+    items = top + loose
+    if not items:
+        _error("no SolidWorks parts or assemblies found in %s" % folder)
+        return []
+    docs = []
+    errors = []
+    _batch_errors, _search_dirs = errors, [folder]
+    progress = None
+    try:
+        try:
+            progress = FreeCAD.Base.ProgressIndicator()
+            progress.start("Importing SolidWorks folder", len(items))
+        except Exception:
+            progress = None
+        for i, path in enumerate(items):
+            _msg("(%d/%d) %s" % (i + 1, len(items), path))
+            try:
+                docs.append(open(path))
+            except (ConversionError, _asm.AssemblyError):
+                pass                      # already recorded by _error()
+            except Exception as exc:
+                errors.append("%s: %s" % (os.path.basename(path), exc))
+            if progress is not None:
+                progress.next()
+            if FreeCAD.GuiUp:
+                from PySide import QtGui
+                QtGui.QApplication.processEvents()
+    finally:
+        if progress is not None:
+            progress.stop()
+        _batch_errors, _search_dirs = None, []
+    summary ="Opened %d of %d: %d assembl%s and %d part%s." % (
+        len(docs), len(items), len(top), "y" if len(top) == 1 else "ies",
+        len(loose), "" if len(loose) == 1 else "s")
+    if skipped:
+        summary += "\n%d file%s used inside the assemblies %s not opened separately." % (
+            skipped, "" if skipped == 1 else "s", "was" if skipped == 1 else "were")
+    if errors:
+        shown = errors[:15]
+        summary += "\n\nProblems:\n\n" + "\n".join("  " + e for e in shown)
+        if len(errors) > len(shown):
+            summary += "\n  ... and %d more (see the Report view)" % (len(errors) - len(shown))
+    _msg(summary.replace("\n\n", "\n"))
+    if FreeCAD.GuiUp:
+        try:
+            from PySide import QtGui
+            box = QtGui.QMessageBox.warning if errors else QtGui.QMessageBox.information
+            box(None, "SolidWorks import", summary)
+        except Exception:
+            pass
+    return docs
 
 
 def _placement(m):

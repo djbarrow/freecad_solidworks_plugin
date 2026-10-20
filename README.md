@@ -7,7 +7,8 @@ installed:
 * **Assemblies** (`.SLDASM`), with every component in its SolidWorks position
 * **Parasolid** files (`.x_t`, `.x_b`)
 
-The files appear in **File → Open** and **File → Import**. Each body becomes a
+The files appear in **File → Open** and **File → Import**, and
+**File → Import SolidWorks folder…** opens a whole folder at once. Each body becomes a
 solid with its SolidWorks colours. Each assembly component becomes an
 `App::Part` labelled as in the SolidWorks tree (for example `crank-1`).
 
@@ -52,6 +53,20 @@ SolidWorks stores the full Windows path of every part used by an assembly. The
 plugin looks for each part next to the assembly and in folders below it. If a
 part is not found, FreeCAD asks for the folder that contains it. Components whose
 files are still missing are left out, and their names are listed.
+
+## Folders
+
+**File → Import SolidWorks folder…** opens every `.SLDASM` and `.SLDPRT` in a
+folder, each in its own document:
+
+* Every assembly that no other assembly in the folder uses, with all its
+  components.
+* Every part that none of those assemblies use.
+
+Parts and sub-assemblies that an assembly already contains are not opened a
+second time. If the folder has subfolders with SolidWorks files, you are asked
+whether to include them. Problems (unreadable files, missing parts) are listed
+in one summary at the end instead of stopping the import.
 
 ## Speed
 

@@ -15,6 +15,12 @@ class ConversionError(RuntimeError):
     pass
 
 
+def _short(exc, limit=80):
+    """Error text fit for a message box: decoder errors can quote raw bytes."""
+    text = "".join(c if c.isprintable() and ord(c) < 128 else "?" for c in str(exc))
+    return text if len(text) <= limit else text[:limit] + "..."
+
+
 def load_transmit(path):
     """Decode the Parasolid body of a SolidWorks part (or a raw .x_t/.x_b file)."""
     data = open(path, "rb").read()
@@ -42,8 +48,8 @@ def load_transmit(path):
             if name.rsplit("/", 1)[-1] == "Config-0-Partition":
                 # never fall back to ghost / feature bodies when the main
                 # geometry is unreadable: that silently drops most of the part
-                raise ConversionError("could not decode the part geometry (%s)" % exc)
-            errors.append("%s: %s" % (name, exc))
+                raise ConversionError("could not decode the part geometry (%s)" % _short(exc))
+            errors.append("%s: %s" % (name, _short(exc)))
             continue
         if t.of_type(14):
             return t, kind
