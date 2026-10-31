@@ -26,6 +26,9 @@ If you like the plugin, please support it by paying **10 euro** via
 On [paypal.com](https://www.paypal.com/), choose **Send**, enter
 `barrow_dj@yahoo.com`, and send 10 EUR.
 
+This was very easy for me admittedly, claude obviously leaned on research done
+by https://github.com/cadmpeg/cadmpeg etc.
+
 ## Install
 
 ### With the Addon Manager (recommended)
