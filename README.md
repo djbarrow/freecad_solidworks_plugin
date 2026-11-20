@@ -15,7 +15,7 @@ solid with its SolidWorks colours. Each assembly component becomes an
 ## Support the plugin
 
 A SolidWorks licence costs around **3500 euro a year**. This plugin opens your
-SolidWorks files in free FreeCAD, which makes it excellent value.
+SolidWorks files in free FreeCAD, which makes it excellent value. To date nobody has been kind enough to pay a penny and I've been unemployed 6 years. I'm getting sorry I bothered.
 
 This is very useful for getting solidworks files from [**GrabCAD**](https://www.grabcad.com/) and similar.
 
@@ -26,7 +26,8 @@ If you like the plugin, please support it by paying **10 euro** via
 On [paypal.com](https://www.paypal.com/), choose **Send**, enter
 `barrow_dj@yahoo.com`, and send 10 EUR.
 
-This was very easy for me admittedly, claude obviously leaned on research done
+This was easier than expected for me admittedly,
+claude obviously leaned on research done
 by https://github.com/cadmpeg/cadmpeg etc.
 
 ## Install
