@@ -76,7 +76,6 @@ class Builder:
         self._surf = {}
         self._edge = {}
         self._curve = {}
-        self._edge_override = {}
         self.appearances = []
         self.last_appearance = None
         self.stats = {"faces": 0, "failed_faces": 0, "approx_faces": 0}
@@ -428,7 +427,7 @@ class Builder:
                 return self._blend_boundary_points(bounds[0], pts, closed)
             except Exception as exc:
                 self.log.info("blend boundary %d: %s" % (c["node_id"], exc))
-        if any(s is None or s.type in (56, 59, 120) for s in snodes):
+        if any(s is None or s.type in (59, 120) for s in snodes):
             # blend / construction surfaces: just keep the chart on the real one
             real = [s for s in snodes if s is not None and s.type not in (56, 59, 120)]
             if not real:
@@ -440,8 +439,8 @@ class Builder:
                 q = g.value(u, v)
                 out.append((q.x / MM, q.y / MM, q.z / MM))
             return out
-        g1, _ = self.surface(snodes[0])
-        g2, _ = self.surface(snodes[1])
+        g1 = self._support_surface(snodes[0], self.node(snodes[0]["owner"]))
+        g2 = self._support_surface(snodes[1], self.node(snodes[1]["owner"]))
         n = len(pts)
         segs = n if closed else n - 1
         dense = []
@@ -466,9 +465,9 @@ class Builder:
         blend = self.node(bb["blend"])
         support = self.node(blend["surface"][1 - int(bb["boundary"])])
         r = blend["range"]
-        if support.type == 56 or not (r[0] or r[1]):
+        if not (r[0] or r[1]):
             raise BuildError("unsupported support for blend boundary")
-        g, _ = self.surface(support)
+        g = self._support_surface(support, self.node(support["owner"]))
         spine = self.node(blend["spine"])
         if spine.type in (38, 137):
             spts, sclosed = self.sample_curve(spine)
@@ -476,10 +475,10 @@ class Builder:
             spts = [G.curve_eval(self.t, spine, TWO_PI * i / 180.0) for i in range(180)]
         else:
             raise BuildError("spine type %s" % spine.name)
-        feet = [self._foot(g, _v(p)) for p in spts]
+        radius = abs(r[1 - int(bb["boundary"])]) * MM
+        feet = [self._support_foot(support, g, _v(p), radius) for p in spts]
         # keep only the stretch covered by the chart, in chart order
         i0 = min(range(len(feet)), key=lambda i: G.dist(feet[i], chart[0]))
-        i1 = min(range(len(feet)), key=lambda i: G.dist(feet[i], chart[-1]))
         if closed:
             k = i0
             out = []
@@ -493,15 +492,32 @@ class Builder:
                 out.append(feet[k])
                 k = (k + step) % len(feet)
             return out
-        lo, hi = (i0, i1) if i0 <= i1 else (i1, i0)
-        seg = feet[max(0, lo - 1):hi + 2]
-        if i0 > i1:
-            seg.reverse()
-        if len(seg) < 2:
-            raise BuildError("boundary too short")
-        # the chart ends are exact limits of the curve
-        seg[0], seg[-1] = chart[0], chart[-1]
-        return seg
+        return self._chart_interval(feet, sclosed, chart)
+
+    @classmethod
+    def _chart_interval(cls, feet, sclosed, chart):
+        """Clip sampled feet to the chart endpoints without endpoint overshoot."""
+        a = cls._locate(feet, sclosed, chart[0])
+        b = cls._locate(feet, sclosed, chart[-1])
+        n = len(feet)
+        if sclosed:
+            mid = cls._locate(feet, True, chart[len(chart) // 2])
+            forward = ((mid - a) % n <= (b - a) % n if len(chart) > 2
+                       else (b - a) % n <= (a - b) % n)
+            if forward:
+                b = a + (b - a) % n
+            else:
+                b = a - (a - b) % n
+        reverse = b < a
+        lo, hi = sorted((a, b))
+        inner = [feet[k % n] for k in range(int(math.floor(lo)) + 1,
+                                           int(math.ceil(hi))) if lo < k < hi]
+        if reverse:
+            inner.reverse()
+        # Do not include the nearest samples *outside* the chart interval.
+        # Replacing their neighbours with the exact endpoints makes the curve
+        # double back at its ends and creates self-intersecting trimming wires.
+        return [chart[0]] + inner + [chart[-1]]
 
     @staticmethod
     def _snap(g1, g2, q, tdir, iters=12):
@@ -758,9 +774,8 @@ class Builder:
                 continue
             edges = []
             for fin in fins:
-                pieces = self._edge_override.get(fin["edge"])
-                if pieces is None:
-                    pieces = [self.edge_shape(fin["edge"])]
+                # Building/repairing a wire must not mutate the shared edge cache.
+                pieces = [self.edge_shape(fin["edge"]).copy()]
                 if fin["sense"] == "+":
                     edges.extend(pieces)
                 else:
@@ -825,7 +840,10 @@ class Builder:
         # disabled; faces it would have repaired go through _split_face.
         sf.FixPeriodicDegeneratedMode = 0
         for w in wires:
-            sf.add(w)
+            # ShapeFix mutates edge/vertex tolerances and p-curves in place.
+            # Keep the input topology (also used by neighbouring faces and
+            # the edge cache) independent of this face's repair.
+            sf.add(w.copy())
         sf.perform()
         return sf.face()
 
@@ -910,7 +928,7 @@ class Builder:
                 ulo, uhi = max(ulo, b[0]), min(uhi, b[1])
                 vlo, vhi = max(vlo, b[2]), min(vhi, b[3])
             big = g.toShape(ulo, uhi, vlo, vhi)
-        res, _ = big.generalFuse(edges, 1e-5)
+        res, history = big.generalFuse(edges, 1e-5)
         pieces = res.Faces
         if not pieces:
             return None
@@ -934,6 +952,28 @@ class Builder:
         qu, qv = g.parameter(q)
         q = g.value(qu, qv)
         best = min(pieces, key=lambda pc: pc.distToShape(Part.Vertex(q))[0])
+        # A periodic seam may split one material region into several faces.
+        # Cross artificial patch/seam edges, but never the input trim curves.
+        barriers = [e for descendants in history[1:] for sh in descendants
+                    for e in sh.Edges]
+        selected = [best]
+        pending = [pc for pc in pieces if not pc.isSame(best)]
+        changed = True
+        while changed:
+            changed = False
+            for pc in list(pending):
+                connected = any(e.isSame(other)
+                                and not any(e.isSame(cut) for cut in barriers)
+                                for chosen in selected for other in chosen.Edges
+                                for e in pc.Edges)
+                if connected:
+                    selected.append(pc)
+                    pending.remove(pc)
+                    changed = True
+        if len(selected) > 1:
+            joined = selected[0].fuse(selected[1:]).removeSplitter()
+            if joined.isValid():
+                return joined
         return best
 
     def _close_wire(self, edges):
@@ -1023,8 +1063,8 @@ class Builder:
         rows = []
         for c in spts:
             cv = _v(c)
-            q1 = self._foot(g1, cv)
-            q2 = self._foot(g2, cv)
+            q1 = self._support_foot(s1, g1, cv, radius * MM)
+            q2 = self._support_foot(s2, g2, cv, radius * MM)
             d1 = G.unit(G.sub(q1, c))
             d2 = G.unit(G.sub(q2, c))
             ang = math.acos(max(-1.0, min(1.0, G.dot(d1, d2))))
@@ -1045,6 +1085,34 @@ class Builder:
         bs = Part.BSplineSurface()
         bs.interpolate(rows)
         return bs
+
+    @staticmethod
+    def _support_foot(node, g, pv, radius):
+        """Contact point of the rolling ball, not an unrelated nearest sheet.
+
+        A spindle torus has two sheets near its axis. The closest projection
+        may jump to the other sheet even though the ball spine follows a
+        fixed offset. Select the projection consistent with the ball radius.
+        """
+        if node.type == 54 and abs(node["major_radius"]) <= node["minor_radius"]:
+            centre, axis = _v(node["centre"]), _d(node["axis"])
+            delta = pv - centre
+            radial = delta - axis * delta.dot(axis)
+            if radial.Length > 1e-10:
+                radial.normalize()
+                candidates = []
+                for sign in (-1, 1):
+                    tc = centre + radial * (sign * abs(node["major_radius"]) * MM)
+                    direction = pv - tc
+                    if direction.Length < 1e-10:
+                        continue
+                    direction.normalize()
+                    q = tc + direction * (node["minor_radius"] * MM)
+                    candidates.append(q)
+                if candidates:
+                    q = min(candidates, key=lambda p: abs((p - pv).Length - radius))
+                    return (q.x / MM, q.y / MM, q.z / MM)
+        return Builder._foot(g, pv)
 
     @staticmethod
     def _foot(g, pv):
@@ -1106,7 +1174,8 @@ class Builder:
                     self.log.warn("face %s skipped: %s" % (f["node_id"], exc))
         if not built:
             raise BuildError("no faces could be built")
-        self._propagate_splits(built)
+        # Let sewing split shared boundaries. Rebuilding neighbouring faces
+        # from midpoint-matched edge fragments can change their trimmed area.
         body_type = body["body_type"] if body is not None else None
         shape, kind = self._assemble([fs for _, fs in built], body_type)
         self.last_appearance = self.appearance(body, built, shape)
@@ -1200,88 +1269,6 @@ class Builder:
                     best = None
             result.append(cols[best[1]] if best is not None else default)
         return result
-
-    def _face_edge_ids(self, face):
-        ids = []
-        for loop in self.face_loops(face):
-            for fin in self.loop_fins(loop):
-                if fin.get("edge"):
-                    ids.append(fin["edge"])
-        return ids
-
-    def _pieces_on(self, fshape, eshape):
-        """Edges of a built face lying on a given XT edge, ordered start -> end."""
-        out = []
-        start = _start_point(eshape)
-        c = eshape.Curve
-        box = eshape.BoundBox
-        box.enlarge(1e-3)
-        for fe in fshape.Edges:
-            m = fe.valueAt(0.5 * (fe.FirstParameter + fe.LastParameter))
-            if not box.isInside(m) or eshape.distToShape(Part.Vertex(m))[0] > 1e-4:
-                continue
-            a, b = fe.valueAt(fe.FirstParameter), fe.valueAt(fe.LastParameter)
-            if (a - b).Length < 1e-9 and fe.Length < 1e-7:
-                continue  # degenerate
-            if fe.isSeam(fshape) if hasattr(fe, "isSeam") else False:
-                continue
-            out.append(fe)
-        if len(out) < 2:
-            return out
-        # orient each piece along the XT edge and sort by distance travelled
-        ordered = []
-        for fe in out:
-            a, b = _start_point(fe), _start_point(fe.reversed())
-            try:
-                ta, tb = c.parameter(a), c.parameter(b)
-                key_a, key_b = ta, tb
-                forward = (tb > ta) == (eshape.Orientation != "Reversed")
-            except Exception:
-                key_a, key_b = (a - start).Length, (b - start).Length
-                forward = key_b > key_a
-            piece = fe if forward else fe.reversed()
-            ordered.append(((a - start).Length if forward else (b - start).Length, piece))
-        ordered.sort(key=lambda x: x[0])
-        return [pc for _, pc in ordered]
-
-    def _propagate_splits(self, built):
-        """If face repair split a shared edge in one face, give the neighbouring
-        face the same pieces, so the two faces share identical edges."""
-        users = {}
-        split = set()
-        for item in built:
-            eids = set(self._face_edge_ids(item[0]))
-            for eid in eids:
-                users.setdefault(eid, []).append(item)
-            # one built edge per XT edge means no edge of this face was split
-            if len(item[1].Edges) > len(eids):
-                split.add(id(item))
-        rebuild = set()
-        for eid, items in users.items():
-            if len(items) != 2 or eid in self._edge_override:
-                continue
-            if id(items[0]) not in split and id(items[1]) not in split:
-                continue
-            eshape = self._edge.get(eid)
-            if eshape is None:
-                continue
-            counts = [self._pieces_on(fs, eshape) for _, fs in items]
-            n = [len(x) for x in counts]
-            if n[0] == n[1] or min(n) == 0:
-                continue
-            k = 0 if n[0] > n[1] else 1
-            if n[1 - k] != 1:
-                continue
-            self._edge_override[eid] = counts[k]
-            rebuild.add(id(items[1 - k]))
-        for item in built:
-            if id(item) in rebuild:
-                try:
-                    item[1] = self.face_shape(item[0])
-                    self.log.info("face %d rebuilt with split edges" % item[0]["node_id"])
-                except Exception as exc:
-                    self.log.warn("face %d: rebuild with split edges failed: %s" % (
-                        item[0]["node_id"], exc))
 
     def _assemble(self, faces, body_type):
         comp = Part.Compound(faces)
