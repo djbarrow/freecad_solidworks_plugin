@@ -15,8 +15,8 @@ solid with its SolidWorks colours. Each assembly component becomes an
 ## Support the plugin
 
 My initial plan was a paid subscription website competing with cadexchange,
-A SolidWorks licence costs around **3500 euro a year**. This plugin opens your
-SolidWorks files in free FreeCAD, which makes it excellent value. To date nobody has been kind enough to pay a penny and I'm disgusted, I'm 57 without enough to retire on and I've been unemployed 6 years, I'm forced to take drugs which limit my iq. I'm getting sorry I bothered, I don't have any winning ideas with ai whatsoever. 
+charging 3 euro per drawing, I said if I do that someone next week will beat me to the freecad plugin making the software obselete.
+A SolidWorks licence costs around **3500 euro a year per seat**. This plugin opens your SolidWorks files in free FreeCAD, which makes it excellent value. To date no company making money has been kind enough to pay a penny and I'm disgusted,I'm not expecting money from hobbyists or students but companies, I'm 57 without enough to retire on and I've been unemployed for 12 of the last 13 years, I'm forced to take drugs which affect my brain. I'm getting sorry I bothered, Ideas to make money are hard to come by I've been nursing this one 5 years and finally finished it when I noticed the many views of my youtube talking about it. Companies you want this code to be kept going and priority bugfixes be kind enough to drop me some cash. 
 
 This is very useful for getting solidworks files from [**GrabCAD**](https://www.grabcad.com/) and similar.
 
@@ -25,7 +25,7 @@ If you like the plugin, please support it by paying **10 euro** via
 [**PayPal**](https://www.paypal.com/) to **barrow_dj@yahoo.com**.
 
 On [paypal.com](https://www.paypal.com/), choose **Send**, enter
-`barrow_dj@yahoo.com`, and send 10 EUR.
+`barrow_dj@yahoo.com`, and send 10 EUR, more if a company benefitting a lot from this by avoiding solidworks licenses. I've a buddy charging a companies 22k a month for an alternative to wordpress.
 
 This was easier than expected for me admittedly,
 claude obviously leaned on research done
