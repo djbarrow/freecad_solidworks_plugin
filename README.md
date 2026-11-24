@@ -20,6 +20,10 @@ A SolidWorks licence costs around **3500 euro a year per seat**. This plugin ope
 
 This is very useful for getting solidworks files from [**GrabCAD**](https://www.grabcad.com/) and similar.
 
+I know I'm whinging making money and sales is hard work and its very hard to come up with a good idea as a programmer anymore that can be bread and butter and vibe coding with claude is easier than one would think on small projects, The hard part is keeping knowledgeable of the code vibe coding so one can fix hard bugs that claude fails on in the long run vibe coding might turn into a bad idea making good coders incapable of coding anymore due to lack of practice.
+
+Two new projects worth watching in open source cad are solidcraft and mitcad vibe coded wonders that got quite mature in the last 2 months.
+
 
 If you like the plugin, please support it by paying **10 euro** via
 [**PayPal**](https://www.paypal.com/) to **barrow_dj@yahoo.com**.
